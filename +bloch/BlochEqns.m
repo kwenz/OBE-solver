@@ -30,12 +30,18 @@
 %
 % initialConditions -> NxN matrix storing initial conditions used for the time evolution.
 %
+% lastSol -> last solution obtained from numerical integration; used when extending the evolution
+%
+% optParams -> optimal parameters found through optimization
+% 
+% optVal -> optimal value found through optimization
+%
 %
 %
 %
 % /////////////////////////////////////////////////////////////////////////////////////// 
 %
-% The class contains five methods: 
+% The class contains following methods: 
 %
 % -> contructor BlochEqns(H,D) - to create the object in this class, you have to call this function first. 
 % The input consists of Hamiltonian object H and dissipator object D. The function copies the density matrix from D and sets up all the Bloch
@@ -54,7 +60,32 @@
 %
 % -> function plotEvolution() - plots diagonal elements of obj.evolution (populations of states) as function of time
 %
+% -> function extendEvolution(t_final,Vars) - evolves Bloch equations using the previously obtained solution as the initial condition. Solution is
+% concatenated to the already existing one
 %
+% -> function optimizeParameters(t_ini,t_fin,IC,M,score_pop,varargin) - optimizes parameters using genetic optimization. Can be optimized to obtain high/low populations in
+% various states. t_ini and t_fin are the integration time, IC - initial conditions, M - cell matrix with parameters and their domains, e.g.
+% M={G,0,1;w_a,-2,2}, score_pop - list with states with regards to which we're optimizing. Finally, there are several options:
+% 'Criterion'='minimum' or 'maximum' - minimizing or maximizing 
+% 'Popsize'=int>0 - number of random set of parameters at every iteration
+% 'Iterations'=int>0 - number of iterations every population is optimized for
+% 'Popnumber=int>0 - number of different populations initialized and seperately optimized
+% 'Fraction'=1>float>0 - part of population that is carried over to next iteration
+% 'Integration'='yes' or 'no' - if 'no' is chosen population in given states at t_fin is optimized; if 'yes' is chosen, integral of the
+% population as a function of time from t_ini to t_fin is optimized
+% 'Switching'='yes' or 'no' - if 'yes' is chosen every
+% t_step=(t_fin-t_ini)/no_switches set of parameters used for optimization is being turned off/on
+% 'NoSwitches'=int>0 - how many times parameters are switched in the integration time
+% 'SwitchingParameters'=matrix(a,b) - parameters showing when to switch on/off optimizable parameters; matrix should have at most 'NoSwitches'
+% number of rows and number of columns equal to number of optimized parameters; in a specific row '0' indicates parameter being turned off,
+% any other number indicates parameter turned on
+% Default={'Criterion':'maximum'; 'Popsize':20; 'Iterations':10; 'Popnumber':3; 'Fraction':0.3; 'Integration': 'no'; 'Switching':'no';
+% 'NoSwitches':0; 'SwitchingParameters':[1,1,...,1] (length=number of optimized parameters)}
+%
+%
+%
+% /////////////////////////////////////////////////////////////////////////////////////// 
+
 
 
 
@@ -324,6 +355,8 @@ classdef BlochEqns < handle
 
             ScalarValidity=@(x) isnumeric(x) && isscalar(x) && (x>0);
             
+            ScalarValidityF=@(x) isnumeric(x) && isscalar(x) && (x>0) && (x<1);
+            
             MatrixValidity=@(x) isnumeric(x) && ismatrix(x) && validate_matrix(x,N);
             
             IntegerValidity=@(x) isnumeric(x) && isscalar(x) && (x>0) && mod(x,1)==0;
@@ -350,7 +383,7 @@ classdef BlochEqns < handle
 
             addParameter(p,'Criterion',default_crit,StringValidityC);
             addParameter(p,'Popsize',default_popsize,IntegerValidity);
-            addParameter(p,'Fraction',default_elitefrac,ScalarValidity);
+            addParameter(p,'Fraction',default_elitefrac,ScalarValidityF);
             addParameter(p,'Iterations',default_iterations,IntegerValidity);
             addParameter(p,'Popnumber',default_populations,IntegerValidity);
             addParameter(p,'Integration',default_int,StringValidityI);
@@ -622,6 +655,12 @@ classdef BlochEqns < handle
             if distinct_pops>1
                 pop=final_population;
                 clear final_population;
+                
+               
+                if size(pop(:,1))>popsize
+                    pop=pop(randperm(size(pop(:,1))),:);
+                    pop=pop(1:popsize,:);
+                end
 
                 while size(pop(:,1))<popsize
                           pr=rand;

@@ -44,7 +44,7 @@
 %
 % /////////////////////////////////////////////////////////////////////////////////////// 
 %
-% The class contains ten public methods: 
+% The class contains following public methods: 
 %
 % -> contructor Hamiltonian(n) - to create the object in this class, you have to call this function first. 
 % The input is number of states (numerical value). The function creates empty matrices and stores them in appropriate variables.
@@ -67,10 +67,10 @@
 % -> function unitaryTransformation('Method',{'general','equations'}) - The function finds the appropriate frame, where there would be no time dependence in the hamiltonian,
 % by using one of two methods. The default one (called without any arguments) looks at coupling through light fields between a state and state
 % that is defined as having zero energy. The sum of frequencies in these couplings is put into the unitary matrix and used to transform the Hamiltonian.
-% Time dependence is usually eliminated (it is not always possible; it depends on the system) and substitutions from defined detunings are made
+% Time dependence is usually eliminated (it is not always possible; it depends on the system) and substitutions from defined detunings are made.
 % If the function is called with option ('Method','equation'), the unitary transformation is found by solving a system of linear equation. This method is usable
-% if there are at most as many couplings as number states. It does not require a defined zero energy. The resulting hamiltonian is stored in
-% property 'transformed' and transformation matrix in 'transMatrix'.
+% if there are at most as many couplings as number states. It does not require a defined zero energy.
+% The resulting hamiltonian is stored in property 'transformed' and transformation matrix in 'transMatrix'.
 %
 % -> function createGraph(L) - uses the dissipator object to create a directed graph. Vertices are states labeled using their respective energies,
 % while edges are either couplings between states or decay paths labeld by either Rabi rates or decay rates.

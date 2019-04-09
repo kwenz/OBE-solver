@@ -1,9 +1,10 @@
 function[res]=SixJSymbol(j1,j2,j3,j4,j5,j6)
 
-    import TlF.*
+    import TlF.ThreeJSymbol
 
     if mod(2*j1,1)~=0 || mod(2*j2,1)~=0 || mod(2*j3,1)~=0 || mod(2*j4,1)~=0 || mod(2*j5,1)~=0 || mod(2*j6,1)~=0
 		res=0;
+        return
     end
 
 	m1=-j1:1:j1;
