@@ -245,6 +245,42 @@ classdef Dissipator < handle
                end
 
         end 
+        
+        function obj=changeBasis(obj,varargin)
+           D=obj.dissipator;
+           ne=length(D);
+           n=nargin-1;
+
+           if n~=ne
+               error('Number of vectors provided has to be equal to the number of states')
+           end
+           
+           U=[];
+           
+           for i=1:n
+               vec=varargin{i};
+
+               if length(vec)~=ne
+                
+                   error('All vectors have to have the same length as number of states')
+                   
+               end
+               s=size(vec);
+               
+               if (s(1)==1 && s(2)==1 && ne>1) || length(s)>2 || (s(1)>1 && s(2)>1)
+                   error('You have to provide vectors.')
+               end
+               if s(1)==1
+                   vec=vec.';
+               end
+               
+               U=[U,vec];
+               
+           end
+          
+           obj.dissipator=simplify(U'*D*U,'Steps',100);
+                       
+       end
  
     end
 end

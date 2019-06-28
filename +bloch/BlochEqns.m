@@ -97,6 +97,7 @@ classdef BlochEqns < handle
         densityMatrix
         evTime
         evolution
+        evolutionTr
         eqnsRHS
         equations
         equationsVector
@@ -185,6 +186,7 @@ classdef BlochEqns < handle
             disp('To solve the time evolution of the system you have to provide numerical values for the following variables:')
             disp(setdiff(v,t))
             disp('The order has to be the same')
+            v=setdiff(v,t);
         end
         
         
@@ -240,13 +242,56 @@ classdef BlochEqns < handle
         end
         
         
+        function obj=changeBasis(obj,varargin)
+           Eqs=obj.evolution;
+           ne=length(obj.densityMatrix);
+           n=nargin-1;
+
+           if n~=ne
+               error('Number of vectors provided has to be equal to the number of states')
+           end
+           
+           U=[];
+           
+           for i=1:n
+               vec=varargin{i};
+
+               if length(vec)~=ne
+                
+                   error('All vectors have to have the same length as number of states')
+                   
+               end
+               s=size(vec);
+               
+               if (s(1)==1 && s(2)==1 && ne>1) || length(s)>2 || (s(1)>1 && s(2)>1)
+                   error('You have to provide vectors.')
+               end
+               if s(1)==1
+                   vec=vec.';
+               end
+               
+               U=[U,vec];
+               
+           end
+           
+           EqsTr=zeros(size(Eqs));
+           
+           for i=1:size(Eqs,3)
+               EqsTr(:,:,i)=U'*squeeze(Eqs(:,:,i))*U;
+           end
+           
+           obj.evolutionTr=EqsTr;
+                       
+        end
+       
+        
         function extendEvolution(obj,t_final,Vars)
             if isnumeric(t_final)
                 t_initial=obj.intTime(2);
                     if t_final<=t_initial
                         error('Time of the evolution must be greater than 0')
                     else
-                        obj.intTime(2)=t_final;
+                        
                         n=length(obj.densityMatrix);
 
                             Variables=to_vector(obj.densityMatrix);  
@@ -266,7 +311,6 @@ classdef BlochEqns < handle
                             
                             obj.lastSol=solution;
 
-                            obj.evTime=[obj.evTime,solution.x(1,:)];
                             obj.evTime=solution.x(1,:);
                             
                             EV=zeros(n,n,length(solution.x(1,:)));
@@ -293,6 +337,7 @@ classdef BlochEqns < handle
             end
             xlabel('Time')
             ylabel('Population')
+            xlim([obj.evTime(1,1),obj.evTime(1,end)])
             legend(legendInfo)
             drawnow
         end
