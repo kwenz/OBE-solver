@@ -173,6 +173,8 @@ classdef Hamiltonian < handle
        detunings
        stateGraph
        zeroEnergy
+       brightStates
+       darkStates
    end
    properties(Access=private)
        freqs
@@ -565,6 +567,47 @@ classdef Hamiltonian < handle
                        
        end
        
+       
+       function obj=findDarkStates(obj,ground_states,excited_states)
+           if ~isempty(intersect(ground_states,excited_states))
+               disp('Indeces for ground and excited states have to be different')
+               return
+           end
+           M=obj.transformed(ground_states,excited_states)';
+           N=[];
+           for i=1:length(excited_states)
+               N=[N;M(i,:)/norm(squeeze(M(i,:)))];
+           end
+           N=simplify(N,'Steps',100);
+           obj.brightStates=N;
+           obj.darkStates=null(N);
+           disp("There are "+num2str(length(ground_states)-rank(vpa(N)))+" dark states")
+       end
+       
+       
+       function Heff=adiabaticElimination(obj,ground_states,excited_states)
+           if ~isempty(intersect(ground_states,excited_states))
+               disp('Indeces for ground and excited states have to be different')
+               return
+           end
+           n=length(obj.transformed);
+           P=zeros(n);
+           Q=zeros(n);
+           for i=ground_states
+            P(i,i)=1;
+           end
+           for i=excited_states
+            Q(i,i)=1;
+           end
+           
+           V=sym('0');
+           V(ground_states,excited_states)=obj.transformed(ground_states,excited_states);
+           V(excited_states,ground_states)=obj.transformed(excited_states,ground_states);
+           invR=-(Q*obj.transformed*Q+Q*V*Q);
+           R=V+V*(Q/invR)*V;
+           
+           Heff=P*obj.transformed*P+P*R*P;
+       end
    end
    
    
