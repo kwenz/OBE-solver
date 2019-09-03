@@ -189,7 +189,7 @@ classdef Hamiltonian < handle
                H=sym('H',n);
                H(:,:)=sym(0);
                C=sym('C',[n n 2]);
-               C(:,:,:)=sym(0);
+               C(:,:,:,:)=sym(0);
                obj.hamiltonian=H;
                obj.energies=diag(H);
                obj.couplings=C;
@@ -273,6 +273,59 @@ classdef Hamiltonian < handle
                    H(S_f,S_i)=-conj(W_r)/2*exp(-1i*w*t);
                else
                    H(S_f,S_i)=-W_r/2*exp(-1i*w*t);
+               end
+               cp(S_i)=cp(S_i)+1;
+               obj.cpl=cp;
+               obj.freqs=fr;
+
+           else
+               error('Indecies have to be numeric values')
+           end
+           obj.hamiltonian=H;
+           obj.couplings=C;
+       end
+       
+       
+       function obj=addPolyCoupling(obj,S_i,S_f,W_r,w)
+           H=obj.hamiltonian;
+           C=obj.couplings;
+           cp=obj.cpl;
+           fr=obj.freqs;
+         
+           if isnumeric(S_i) && isnumeric(S_f)
+               if S_i>length(H) || S_f>length(H)
+                   error('Indecies cannot exceed size of the hamiltonian')
+               end
+               if S_i==S_f
+                   error('Cannot couple with light the state with itself')
+               end
+               if isnumeric(W_r)
+                   W_r=sym(W_r);
+               end
+               if isnumeric(w)
+                   w=sym(w);
+               end
+               
+               if ~ismember(w,fr)
+                   fr=[fr,w];
+               end
+               
+               
+%                if C(S_i,S_f,1,1)==0
+                   C(S_i,S_f,1)=w;
+                   C(S_i,S_f,2)=W_r;
+%                else
+%                    C(S_i,S_f,1,:)=[C(S_i,S_f,1,:end-1),w];
+%                    C(S_i,S_f,2,:)=[C(S_i,S_f,2,:end-1),W_r];
+%                end
+
+
+               syms t real; 
+               H(S_i,S_f)=H(S_i,S_f)-W_r/2*exp(1i*w*t);
+               if imag(W_r)~=0
+                   H(S_f,S_i)=H(S_f,S_i)-conj(W_r)/2*exp(-1i*w*t);
+               else
+                   H(S_f,S_i)=H(S_f,S_i)-W_r/2*exp(-1i*w*t);
                end
                cp(S_i)=cp(S_i)+1;
                obj.cpl=cp;
@@ -492,7 +545,9 @@ classdef Hamiltonian < handle
            end
            
            if ~ismember(w,W)
-              error('Coupling with such frequency does not exist'); 
+               if ~ismember(w,symvar(W))
+                error('Coupling with such frequency does not exist'); 
+               end
            end
 
            
@@ -591,6 +646,8 @@ classdef Hamiltonian < handle
                return
            end
            n=length(obj.transformed);
+           remainder=1:n;
+           remainder=setdiff(remainder,[ground_states,excited_states]);
            P=zeros(n);
            Q=zeros(n);
            for i=ground_states
@@ -599,14 +656,22 @@ classdef Hamiltonian < handle
            for i=excited_states
             Q(i,i)=1;
            end
-           
-           V=sym('0');
+           D=diag(diag(obj.transformed));
+           V=sym(zeros(n));
            V(ground_states,excited_states)=obj.transformed(ground_states,excited_states);
            V(excited_states,ground_states)=obj.transformed(excited_states,ground_states);
-           invR=-(Q*obj.transformed*Q+Q*V*Q);
+           invR=-(Q*D*Q+Q*V*Q);
+%            disp(V)
+%            disp(invR)
            R=V+V*(Q/invR)*V;
            
-           Heff=P*obj.transformed*P+P*R*P;
+           Heff=P*D*P+P*R*P;
+           
+           if ~isempty(remainder)
+              Heff(:,remainder)=obj.transformed(:,remainder);
+              Heff(remainder,:)=obj.transformed(remainder,:);
+               
+           end
        end
    end
    
@@ -689,6 +754,9 @@ classdef Hamiltonian < handle
        function obj=generalTransform(obj)
 
            H=obj.hamiltonian;
+           if ~isempty(obj.transformed)
+               H=obj.transformed;
+           end
            w0=obj.zeroEnergy;
            if isempty(w0)
               disp('To use this method, you should specify the zero energy level. Use "defineZero" function. Now, the function will use H(1,1) as its baseline instead.')
