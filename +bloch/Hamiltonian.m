@@ -269,11 +269,7 @@ classdef Hamiltonian < handle
 
                syms t real; 
                H(S_i,S_f)=-W_r/2*exp(1i*w*t);
-               if imag(W_r)~=0
-                   H(S_f,S_i)=-conj(W_r)/2*exp(-1i*w*t);
-               else
-                   H(S_f,S_i)=-W_r/2*exp(-1i*w*t);
-               end
+               H(S_f,S_i)=-conj(W_r)/2*exp(-1i*w*t);
                cp(S_i)=cp(S_i)+1;
                obj.cpl=cp;
                obj.freqs=fr;

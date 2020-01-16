@@ -41,18 +41,18 @@ disp('Branching Ratios')
 disp(d.branching)
 
 %Graph
-
+%%
 h.createGraph(d);
 h.plotGraph();
-
-
+%%
+import bloch.*
 %Bloch equations
 
 eq=BlochEqns(h,d);
 
 disp('Optical Bloch Equations')
 disp(eq.equationsVector)
-
+%%
 %Steady state solution
 eq.solveSteady();
 pee=eq.steadyState(3,3);
@@ -60,8 +60,9 @@ pee=eq.steadyState(3,3);
 % 
 disp('Steady state solution for the excited state population')
 disp(pee)
-
-
+%%
+eq.necessaryVariables();
+%%
 % Time evolution
 
 % eq.necessaryVariables(); %Called first, to see which variables need to be substituted.
@@ -83,13 +84,14 @@ eq.eqnsRHS=subs(eq.eqnsRHS,[Ga,Gb],[gamma_a,gamma_b]);
 % Parameter optimization - highest possible population in the excited state
 Params={Wae,0,1;Wbe,0,1;dae,-5,5;dbe,-5,5};
 eq.optimizeParameters(0,20,IC,Params,[3],'Integration','no','Popsize',10,'Iterations',10,'Popnumber',1);
-
+%%
 % Evolution given optimal parameters
-eq.evolve(0,20,IC,eq.optParams);
+eq.evolve(0,20,IC,[Rabi_a,Rabi_b,delta_a,delta_b]);
+%%
 eq.plotEvolution();
-
+%%
 % Extending evolution to t=100
-eq.extendEvolution(100,eq.optParams)
+eq.extendEvolution(100,[Rabi_a,10,delta_a,delta_b])
 eq.plotEvolution()
 
 

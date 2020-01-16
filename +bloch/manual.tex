@@ -1,0 +1,358 @@
+\documentclass{article}
+\usepackage[cp1250]{inputenc}
+\usepackage{graphicx}
+\usepackage{amsmath,amsthm,amssymb,mathrsfs}
+\usepackage{mathtools}
+\usepackage{physics}
+\usepackage{subfig}
+\usepackage[titletoc]{appendix}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{arydshln}
+\usepackage{lscape}
+\usepackage{tikz}
+\usepackage{slashbox}
+\usepackage{etoolbox}
+\usepackage[left = 2cm, right=2cm, top=2.5cm, bottom=2.5cm, headsep=1.2cm]{geometry}
+
+\setcounter{MaxMatrixCols}{20}
+\usetikzlibrary{positioning}
+\usetikzlibrary{matrix}
+\usetikzlibrary{arrows,decorations.pathmorphing}
+\numberwithin{equation}{section}
+\numberwithin{figure}{section}
+\numberwithin{table}{section}
+
+\newcommand\codefun[2]{\textit{\textbf{#1(}#2\textbf{)}}}
+\newcommand\codevar[1]{\ttfamily #1\rmfamily}
+\newcommand\codeclass[1]{\ttfamily\textbf{\textit{#1}}\rmfamily}	
+
+\newcommand\bovermat[2]{\makebox[0pt][l]{$\smash{\overbrace{\phantom{\begin{matrix}#2\end{matrix}}}^{#1}}$}#2}
+		
+
+
+\title{OBE Solver Documentation}
+
+\begin{document}
+
+\maketitle
+
+
+
+
+
+This Optical Bloch Equations solver is in fact a small package allowing to quickly design the quantum system and obtain the time evolution of the density matrix. It is done by numerically solving the master equation in the Lindblad form. The package consists of three classes: \codeclass{Hamiltonian}, where the quantum system's energies and couplings are encoded, \codeclass{Dissipator}, where the dissipative part of the equation is defined, and \codeclass{BlochEqns}, where the equations are created and solved.
+
+\section*{\textbf{class} \codeclass{Hamiltonian}$(n)$}
+
+This class defines system's hamiltonian using symbolic variables that's designed for a quantum system with $n$ states. If numerical values are necessary, one can always use function \codefun{subs}{obj.***,symbolic variables,numerical values} and store the result in a new user-defined variable. To find symbolic variables that are being used, use \codefun{symvar}{obj.***}.
+
+\subsection*{Properties}
+
+\subsubsection*{Public}
+
+The class stores the following public properties:
+
+\begin{itemize}
+\item \codevar{hamiltonian} - contains the quantum system's basic hamiltonian that's initially defined - an $n$-by-$n$ matrix. If the hamiltonian is transformed using a unitary transformation, it will be stored in a different variable. This one always contains the original hamiltonian.
+\item \codevar{transformed} - contains the hamiltonian after a unitary transformation is applied
+\item \codevar{transMatrix} - the matrix used for a unitary transformation
+\item \codevar{energies} - diagonal elements of the hamiltonian (energies of all the states) stored as a vector of length $n$
+\item \codevar{couplings} - a $n$-by-$n$-by-$2$ matrix, where the $(i,j,2)$ element is the Rabi rate associated with the $i\rightarrow j$ transition, and the $(i,j,1)$ element is frequency of the light field
+\item \codevar{detunings} - an $m$-by-3 matrix, where $m$ is number of defined detunings. $(k,1)$ is the index of the initial state of the transition, $(k,2)$ is the index of the final state and $(k,3)$ is the detuning $d$
+\item \codevar{zeroEnergy} - energy level (symbolic) defined as having 0 energy. It has to be a part of one of the energy levels specified in property \codevar{energies}
+\item \codevar{stateGraph} - a directed graph of the system, where edges go along defined couplings (if coupling is defined as $i\rightarrow f$, the edge will follow that direction) and along the decay paths
+\item \codevar{brightStates} - matrix storing system's bright states as rows
+\item \codevar{darkStates} - matrix storing system's dark states as rows, if any exist
+
+\end{itemize}
+
+\subsubsection*{Private}
+
+Private properties are:
+
+\begin{itemize}
+\item \codevar{freqs} - vector storing light frequencies
+\item \codevar{cpl} - number of state couplings in the system
+\item \codevar{cplGr} - coupling graph between states (can be disconnected, depends on how the system is set), where edges have weights equal to coupling frequencies. 
+\end{itemize}
+
+\subsection*{Methods}
+
+\subsubsection*{Public}
+
+In the class we have following public methods:
+
+\begin{itemize}
+
+\item \codefun{addEnergies}{$vec$} - this function takes vector $vec$ (a list of symbolic variables) as its input and places them in the hamiltonian. It also stores the vector in the property \codevar{energies}. These represent energies of quantum states.
+
+\item \codefun{addCoupling}{$S_i$, $S_f$, $\Omega$, $\omega$} - couples initial state $S_i$ with final state $S_f$ with a light field that has Rabi rate $\Omega$ and frequency $\omega$. It places appropriate term in the off-diagonal cells of the hamiltonian assuming rotating wave approximation. Variables $S_i$ and $S_f$ are indices so they have to smaller than the number of states ($0<S_i$,$S_f<n$), while $\Omega$ and $\omega$ have to be symbolic. The terms that are added are:
+
+\begin{displaymath}
+H(S_i,S_f)=H(S_f,S_i)^*=-\Omega\frac{e^{i\omega t}}{2}
+\end{displaymath}
+
+\noindent The variables used as argument of this function are then stored in the class variable \codevar{couplings}.
+
+\item \codefun{addPolyCoupling}{$S_i$, $S_f$, $\Omega$, $\omega$} - function very similar to \codefun{addCoupling}{}, with the exception that it adds a new term in $H(S_i,S_f)$, instead of setting it. In other words, the function acts in the following way:
+
+\begin{align*}
+H(S_i,S_f)&\rightarrow H(S_i,S_f)-\Omega\frac{e^{i\omega t}}{2}\\
+H(S_f,S_i)&\rightarrow H(S_f,S_i)-\Omega^*\frac{e^{-i\omega t}}{2}.
+\end{align*}
+
+\item \codefun{defineStateDetuning}{$S_i$, $S_f$, $\delta$} - changes variables, by replacing light's frequency $\omega$ coupling states $S_i$ and $S_f$ with detuning $\delta$. Variables $S_i$ and $S_f$ are numerical indices, while $\delta$ has to be symbolic. The substitution is defined as: $\delta=E_f-E_i-\omega$, where $E_f$ and $E_i$ are energies of final and initial states respectively.
+
+\item \codefun{defineEnergyDetuning}{$E_i$, $E_f$, $\delta$, $\omega$} - this function changes variables in a more straight-forward way, which might be needed, when state energies are more complicated variables. It replaces frequency $\omega$ with energy difference minus the detuning ($w=E_f-E_i-\delta$). All variables have to be symbolic.
+
+\item \codefun{createGraph}{L} - uses an object of the \codeclass{Dissipator} class to create a directed graph. Vertices are states labeled using their respective energies, while edges are either couplings between states or decay paths labeled by either Rabi rates or decay rates.
+
+\item \codefun{plotGraph}{} - plots graph of the system that's kept in the \codevar{stateGraph} property
+
+\item \codefun{addSidebands}{$center$, $order$, $depth$, $spacing$} - adds $order$ number of sidebands around $center$ frequency to all the couplings defined with such frequency. They are added using expansion to Bessel functions (so it is crucial that the $order$ is chosen correctly depending on $depth$; for exact solution, use \codefun{addPhaseModulation}{} function). The modulation depth and spacing between sidebands are define by $depth$ and $spacing$ respectively. This function should be used only after the unitary transformation of the hamiltonian (so after \codefun{unitaryTransformation}{} function is called).
+
+\item \codefun{addPhaseModulation}{$\omega$, $\beta$, $\omega_m$} - adds phase modulation to the laser of $\omega$ frequency, depth $\beta$ and modulation frequency $\omega_m$ to all the couplings defined with provided frequency. The modulating parts of the off-diagonal terms in the hamiltonian are changed in the following way:
+
+\begin{displaymath}
+e^{i\omega t}\rightarrow e^{i\omega t + i\beta\sin{\omega_m t}}.
+\end{displaymath}
+
+
+\item \codefun{changeBasis}{U} - performs basis change. The function acts on the property \codevar{transformed}:
+
+\begin{displaymath}
+H\rightarrow U^{\dagger}HU,
+\end{displaymath}
+
+where $H$ is hamiltonian in form stored in property \codevar{transformed}. The matrix $U$ has to be provided as a list of $n$ vectors, $U=[u_1,\,u_2,\,\ldots,\,u_n]$, where $n$ is the size of the hamiltonian.
+
+\item \codefun{findDarkStates}{$GS$, $ES$} - this function finds the dark and bright by looking at the kernel of normalized of the interaction part of the hamiltonian between defined ground and excited states. Assuming that $H$ is the hamiltonian in the form stored in the property \codevar{transformed}, $Q$ is projection operator onto the excited states $ES$ and $P$ is projection operator onto the ground states $GS$:
+
+\begin{align*}
+Q&=\sum_{i=ES}{\ket{i}\bra{i}}\\
+P&=\sum_{j=GS}{\ket{j}\bra{j}},
+\end{align*}
+
+\noindent then the bright states $B=QHP$, while the dark states $D=\mathrm{\textbf{ker}}\ B$. These are stored in properties \codevar{brightStates} and \codevar{darkStates} respectively. $GS$ and $ES$ are lists of indices. 
+
+\item $H_{\mathrm{eff}}$=\codefun{adiabaticElimination}{$GS$, $ES$} - performs adiabatic elimination of the excited states. Physically, it means that changes occurring to quantum states provided in variable $ES$ are happening on drastically different timescales than for the rest of the system, and therefore these states can be effectively eliminated. The mathematical procedure and physical conditions when one can use it are provided in \cite{adel}. The function returns hamiltonian after the adiabatic elimination. 
+
+\item \codefun{unitaryTransformation}{**kwargs} - The function finds the appropriate frame, where there would be no time dependence in the hamiltonian, by using one of two methods. Both of these methods try to find unitary transformation matrix $T$ after which following transformation is performed on the hamiltonian $H$ stored in property \codevar{hamiltonian}:
+
+\begin{displaymath}
+H\rightarrow T^{\dagger}HT-iT^{\dagger}\frac{dT}{dt}.
+\end{displaymath}
+
+\noindent The resulting hamiltonian is stored in property \codevar{transformed} and transformation matrix in \codevar{transMatrix}.
+\newline
+\noindent Options:
+
+\begin{itemize}
+
+\item 'Method':
+
+\begin{itemize}
+\item 'general' - the default option. It looks at coupling through light fields between states and the state that is defined as having zero energy. The sum of frequencies in these couplings is put into the unitary matrix and used to transform the Hamiltonian. Time dependence is usually eliminated (it is not always possible; it depends on the system) and substitutions from defined detunings are made.
+\item 'equations' - the unitary transformation is found by solving a system of linear equation. This method is usable if there are at most as many couplings as there are states. It does not require a defined zero energy. 
+\end{itemize}
+\end{itemize}
+
+\end{itemize}
+
+
+\section*{\textbf{class} \codeclass{Dissipator}$(n)$}
+
+This class defines system's dissipator operator using symbolic variables that's designed for a quantum system with $n$ states. If numerical values are necessary, one can always use function \codefun{subs}{obj.***,symbolic variables,numerical values} and store the result in a new user-defined variable. To find symbolic variables that are being used, use \codefun{symvar}{obj.***}.
+
+\subsection*{Properties}
+
+\subsubsection*{Public}
+
+Public properties are:
+
+\begin{itemize}
+
+\item \codevar{densityMatrix} - the density matrix for which we are solving Bloch equations. It is also needed to create a dissipation matrix. 
+
+\item \codevar{dissipator} - the dissipation matrix. Diagonal elements correspond to population transfers due to spontaneous decays. Off-diagonal elements are the decoherence terms created by the spontaneous decay only. However, additional decoherence terms can be added by hand.
+
+\item \codevar{branching} - a matrix $B$ of branching ratios. The initial states are rows, final states are columns, so the branching ratio of the $i\rightarrow f$ decay is $B(i,f)=b_{if}$ (if state $\ket{i}$ decays with rate $\Gamma$, the decay to $f$ is with rate $b_{if}\Gamma$)
+\item \codevar{decayR} - a vector storing total decay rates from all the states.
+
+\end{itemize}
+
+
+\subsection*{Methods}
+
+The class has following public methods:
+
+\subsubsection*{Public}
+
+\begin{itemize}
+\item \codefun{addDecay}{$S_i$, $S_f$, $\Gamma_{i\rightarrow f}$} - this function adds a decay from initial state $\ket{i}$ to final state $\ket{f}$. $S_i$ and $S_f$ are states' indices (numerical values). The variable $\Gamma_{i\rightarrow f}$ is the decay rate from $\ket{i}$ to $\ket{f}$ \emph{only}, so if state $\ket{i}$ decays to several states, and its total decay rate is $\Gamma$, and the branching ratio to $\ket{f}$ is $b_{if}$, then $\Gamma_{i\rightarrow f}=b_{if}\Gamma$. It has to be a symbolic variable. Mathematically, a matrix associated with that decay is created first:
+
+\[G_{i\rightarrow f}=\Gamma_{i \rightarrow f}\ket{f}\bra{i}=\bordermatrix{&&&&i&\cr
+&0&&\cdots&&0\cr
+f&&&&\sqrt{\Gamma_{i\rightarrow f}}&\cr
+&\vdots&&&&\vdots\cr
+&&&&&\cr
+&0&&\cdots&&0
+}.\]
+
+\noindent This allows us to get a matrix that represents contribution to dissipator $\mathcal{L}$ from spontaneous decay from state $i$ to $f$:
+
+\[
+\mathcal{L}_{i\rightarrow f}=-\frac{1}{2}\{G^{\dag}_{i\rightarrow f}G_{i\rightarrow f},\rho\}+G_{i\rightarrow f}\rho G^{\dag}_{i\rightarrow f}=
+\bordermatrix{&&f&&&i&&\cr
+&\mbox{\Large 0}&&&&-\frac{\Gamma_{i\rightarrow f}}{2}\rho_{1i}&&\mbox{\Large 0}\cr
+f&&\Gamma_{i\rightarrow f}\rho_{ii}&&&\vdots&&\cr
+&&&&&&&\cr
+&&&&\mbox{\Large 0}&\vdots&&\cr
+i&-\frac{\Gamma_{i\rightarrow f}}{2}\rho_{i1}&\cdots&&\cdots&-\Gamma_{i\rightarrow f}\rho_{ii}&\cdots&-\frac{\Gamma_{i\rightarrow f}}{2}\rho_{in}\cr
+&&&&&\vdots&&\cr
+&\mbox{\Large 0}&&&&-\frac{\Gamma_{i\rightarrow f}}{2}\rho_{1n}&&\mbox{\Large 0}}.
+\]
+
+\item \codefun{fromBranching}{$BR$, $DR$} - if branching ratios and total decay rates of all the states are already in a matrix, this function can be used to create the dissipator. $BR$ is a $n$-by-$n$ matrix representing branching ratios in the same form as the property \codevar{branching}. DR is a vector of all the decay rates, which has to be in the same form as property \codevar{decayR}. This function uses a simplified way of creating the dissipator. We can first create matrix $M=\sum_i{M_i}$, where: 
+
+\begin{displaymath}
+(M_i)_{kl}=\begin{cases}
+\sqrt{\Gamma_i}&\mathrm{if}\ k=l=i\\
+0&\mathrm{otherwise}
+\end{cases}
+\end{displaymath}
+
+\noindent and $i$ labels the initial state. Then, the off-diagonal decoherence terms are added via: 
+
+\begin{displaymath}
+\mathcal{L}_{\Gamma}-\frac{1}{2}\{M^2,\rho\}+\sum_i{M_i\rho M_i},
+\end{displaymath}
+
+\noindent while diagonal population transfer terms are added one-by-one.
+
+\end{itemize}
+
+\section*{\textbf{class} \codeclass{BlochEqns}$(H,\ L)$}
+
+This class builds a system of Bloch equations using Hamiltonian and the dissipation matrix. The constructor as its arguments uses object $H$ of class \codeclass{Hamiltonian} and object $L$ of class \codeclass{Dissipator}. It uses the hamiltonian after the unitary transformation. It uses basic hamiltonian, if the transformation wasn't performed.
+
+\subsection*{Properties}
+
+The stored public properties are:
+
+\subsubsection*{Public}
+
+\begin{itemize}
+
+\item \codevar{steadyState} - $n$-by-$n$ matrix, where the $(i,j)$ element corresponds to steady state solution for $\rho_{ij}$ ($(i,j)$ element of the density matrix). $\rho_{ii}$ are populations.
+
+\item \codevar{densityMatrix} - density Matrix $\rho$ copied from the \codeclass{Dissipator} object.
+
+\item \codevar{evTime} - times at which the Bloch equations where evaluated when solving for the time evolution. It's a vector with elements equal to the number of steps in the solution.
+
+\item \codevar{evolution} - $n$-by-$n$-by-$l$ matrix, where $(i,j)$ element is a vector of length $l$ storing values of $\rho_{ij}$ at times saved to \codevar{evTime} property; i.e. it's the time evolution of all elements of the density matrix.
+
+\item \codevar{evolutionTr} - density matrix time evolution \codevar{evolution} after basis change.
+
+\item \codevar{eqnsRHS} - $n^2$-long vector storing the right-hand side of Bloch Equations in the vector form, i.e. $i[H,\rho]+\mathcal{L}$. The order is: $[(1,1),(1,2),...,(1,N),(2,1)...,(N,N-1),(N,N)]$
+        
+\item \codevar{equations} - $n$-by-$n$ matrix storing full Bloch (master) equations, i.e. $\dot{\rho}==i[H,\rho]+\mathcal{L}$, in symbolic form.
+
+\item \codevar{equationsVector} - $n^2$-long vector storing full Bloch (master) equations
+
+\item \codevar{equationsS} - $n$-by-$n$ matrix storing steady state equations, i.e. $0==i[H,\rho]+\mathcal{L}$, in symbolic form.
+
+\item \codevar{intTime} - a 2-element vector storing the integration time for time evolution. .
+
+\item \codevar{initialConditions} - $n$-by-$n$ matrix storing initial conditions used for the time evolution.
+
+\item \codevar{lastSol} - last solution obtained from numerical integration; used when extending the time evolution.
+
+\item \codevar{optParams} - optimal parameters found through optimization.
+
+\item \codevar{optVal} - optimal value found through optimization.
+
+\end{itemize}
+
+\subsection*{Methods}
+
+The public methods of this class are:
+
+\subsubsection*{Public}
+
+\begin{itemize}
+\item \codefun{solveSteady}{$v$} - solves Bloch equations symbolically in the steady state and saves the solution. Note, that the solution usually is feasible only for small systems.
+
+\item \codefun{necessaryVariables}{} - finds all the symbolic variables in Bloch equations that need to be substituted before solving for the time evolution. It is always useful to use this function before attempting to solve the equations.
+
+\item \codefun{evolve}{$t_i$, $t_f$, $IC$, $vars$} - evolves the Bloch equation using ode45 (explicit  six stage fifth order Runge-Kutta method) solver. Evolution happens from $t_i$ to $t_f$ with initial conditions $IC$. $vars$ are numerical values of symbolic variables found using function \codefun{necessaryVariables}{}. They have to be provided in the same order!
+
+\item \codefun{plotEvolution}{} - plots diagonal elements of \codevar{evolution} (populations of states) as function of time
+
+\item \codefun{extendEvolution}{$t_f$, $vars$} - evolves Bloch equations using the previously obtained solution as the initial condition. Solution is concatenated to the already existing one.
+
+\item \codefun{optimizeParameters}{$t_i$, $t_f$, $IC$, $M$, $S$, *args} - optimizes parameters using genetic optimization algorithm. Can be optimized to obtain high/low populations in
+various states. $t_i$ and $t_f$ are the integration time, $IC$ - initial conditions, $M$ - cell matrix with parameters and their domains, e.g. $M=\{G,0,1;w_a,-2,2\}$, $S$ - list of states with regards to which we're optimizing (their indices).
+\newline
+\noindent There are several options:
+
+\begin{itemize}
+
+\item 'Criterion':
+
+\begin{itemize}
+\item 'minimum' - optimizer minimizes chosen parameter.
+\item 'maximum' - optimizer maximizes chosen parameter. 
+\end{itemize}
+
+\item 'Popsize' - an integer greater than 0. It's the number of random set of parameters at every iteration.
+
+\item 'Iterations' - an integer greater than 0. It's the number of iterations every population is optimized for.
+
+\item 'Popnumber' - an integer greater than 0. It's the number of different populations initialized and separately optimized.
+
+\item 'Fraction' - a float between 0 and 1. It's part of population that is carried over to next iteration
+
+\item 'Integration':
+
+\begin{itemize}
+\item 'no' - population in chosen state(s) at time $t_f$ is used for optimization. 
+\item 'yes' - time integral of population in chosen state(s) from $t_i$ to $t_f$ is chosen as the parameter for optimization.
+\end{itemize}
+
+\item 'Switching':
+
+\begin{itemize}
+\item 'no' - time evolution with constant parameters is performed from $t_i$ to $t_f$.
+\item 'yes' -  every $t_s=(t_f-t_i)/n_s$ the set of parameters used for optimization is turned off/on, where $n_s$ is the 'NoSwitches' parameter.
+\end{itemize}
+
+\item 'NoSwitches' - an integer greater than 0. It's the number of times parameters are switched in the integration time.
+
+\item 'SwitchingParameters' - a matrix of parameters showing when to switch on/off optimizable parameters. It should have at most $n_s$ number of rows and the number of columns equal to the number of optimized parameters. In a specific row 0 indicates parameter being turned off, any other number indicates parameter turned on.
+
+\end{itemize}
+
+\noindent Default settings - 'Criterion': 'maximum'; 'Popsize': 20; 'Iterations': 10; 'Popnumber': 3; 'Fraction': 0.3; 'Integration': 'no'; 'Switching': 'no'; 'NoSwitches': 0; 'SwitchingParameters': [1,1,...,1] (length equal to the number of optimized parameters)
+
+
+\item \codefun{changeBasis}{U} - performs basis change. The function acts on the property \codevar{evolution}:
+
+\begin{displaymath}
+\rho(t)\rightarrow U^{\dagger}\rho(t) U,
+\end{displaymath}
+
+where $\rho$ is the density matrix time evolution in form stored in property \codevar{evolution}. The matrix $U$ has to be provided as a list of $n$ vectors, $U=[u_1,\,u_2,\,\ldots,\,u_n]$, where $n$ is the size of the density matrix The resulting density matrix is stored in property \codevar{evolutionTr}.
+
+
+\end{itemize}
+
+\begin{thebibliography}{9}
+\bibitem{adel}
+Brion, E., Pedersen, L. H., Molmer, K. (2007). Adiabatic elimination in a lambda system. Journal of Physics A: Mathematical and Theoretical, 40(5), 1033-1043
+
+\end{thebibliography}
+
+
+\end{document}
