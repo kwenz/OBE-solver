@@ -197,7 +197,7 @@ classdef Dissipator < handle
                
                n=length(D);
                
-               eps=10^(-10);
+               eps=10^(-3);
                
                if length(BR)~=n || length(DR)~=n
                    error('Branching ratios and decay rates have to be specified for all the states')
@@ -209,7 +209,7 @@ classdef Dissipator < handle
                             error('Branching ratios have to be between 0 and 1')
                           end
                         end
-                       
+                        
                         if (sum(BR(i,:))>1+eps || sum(BR(i,:))<1-eps) && (sum(BR(i,:))>eps || sum(BR(i,:))<-eps)
                           
                           error('Sum of branching ratios for a decay from any state has to be equal to 1 or 0')

@@ -699,11 +699,16 @@ classdef Hamiltonian < handle
                return
            end
            
+           disp(Eqns)
+           disp(sol.a1)
+           disp(sol.a2)
+           disp(sol.a3)
+           
            T=sym('T',n);
            T(:,:)=sym(0);
            try
                for i=1:n
-                   T(i,i)=exp(1i*sol.(['a' num2str(i)])*t);  %Solutions are puut into matrix T in the form exp(i*ai*t).
+                   T(i,i)=exp(1i*sol.(['a' num2str(i)])*t);  %Solutions are put into matrix T in the form exp(i*ai*t).
                end
            catch Er
                disp('Couldnt find unitary transformation. Using general method instead.')

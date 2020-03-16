@@ -218,7 +218,7 @@ classdef BlochEqns < handle
 
                         FF=matlabFunction(F,'vars',{t,Y});
 
-                        option=odeset('AbsTol',1e-8,'RelTol',1e-8,'MaxStep',(t_final-t_initial)/1000);
+                        option=odeset('AbsTol',1e-6,'RelTol',1e-5,'MaxStep',(t_final-t_initial)/1000);
       
                         solution=ode45(FF,[t_initial t_final],double(IC),option);
                                                
