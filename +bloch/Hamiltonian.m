@@ -32,6 +32,12 @@
 %
 % -> zeroEnergy - energy level (symbolic) defined as having 0 energy. Has to be a part of one of the energy levels specified in 'energies'.
 %
+% -> brightStates - variable storing superposition vectors of the bright states within the space of ground states defined in function 'findDarkStates'
+%
+% -> darkStates - variable storing superposition vectors of the dark states within the space of ground states defined in function 'findDarkStates'
+%
+% -> adiabaticHamiltonian - stores effective hamiltonian after adiabatic elimination
+%
 %
 % The stored private properties are:
 %
@@ -57,6 +63,9 @@
 % rotating wave approximation (the term is -W_r/2*exp(iwt), without its c.c.; to obtain appropriate Rabi rates with appropriate signs and coefficients
 % i.e. coupling strengths, substitute W_r with desired correct value). Variables S_i and S_f are numeric, while W_r and w have to be symbolic!
 %
+% -> function addPolyCoupling(S_i,S_f,W_r,w) - couples initial state S_i with final states S_f with a light field
+% that has Rabi rate W_r and frequency w. This function should be used, if multiple couplings between states are created.
+%
 % -> function defineStateDetuning(S_i,S_f,d) - often it is easier to work with detunings than with light frequencies. 
 % This function changes variables, by replacing light's frequency w coupling states S_i and S_f with detuning d.
 % Variables S_i and S_f are numeric, while d has to be symbolic!
@@ -69,8 +78,8 @@
 % that is defined as having zero energy. The sum of frequencies in these couplings is put into the unitary matrix and used to transform the Hamiltonian.
 % Time dependence is usually eliminated (it is not always possible; it depends on the system) and substitutions from defined detunings are made.
 % If the function is called with option ('Method','equation'), the unitary transformation is found by solving a system of linear equation. This method is usable
-% if there are at most as many couplings as number states. It does not require a defined zero energy.
-% The resulting hamiltonian is stored in property 'transformed' and transformation matrix in 'transMatrix'.
+% if there are at most as many couplings as number states. It does not require a defined zero energy. The resulting hamiltonian is stored in property 'transformed' 
+% and transformation matrix in 'transMatrix'.
 %
 % -> function createGraph(L) - uses the dissipator object to create a directed graph. Vertices are states labeled using their respective energies,
 % while edges are either couplings between states or decay paths labeld by either Rabi rates or decay rates.
@@ -85,7 +94,27 @@
 % -> function addPhaseModulation(center,depth,mod_freq) - adds phase modulation to the laser of 'center' frequency of depth 'depth' and
 % modulation frequency 'mod_freq'. The modulating part goes from exp(iwt) to exp(iwt + iBsin(w_m*t)), where 'B' is modulation depth, and 'w_m' is
 % modulation frequency.
-% 
+%
+% -> function changeBasis(vecs) - performs transformation of the hamiltonian to a different basis. As argument it takes 'n' (number of
+% states) vectors of length "n" defining the new basis, combines them in transformation matrix U and performs operation of U'HU. Operation is
+% performed on the transformed hamiltonian and result overwrites it.
+%
+% -> function findDarkStates(ground_states,excited_states) - takes slice of the transformed hamiltonian: H(ground_states,excited_states), which
+% represents couplings between the ground and excited states. Both arguments should be lists of different indices and they don't have to
+% cover the whole state space. The function then finds superpositions of ground states that are dark and bright with respect to transitions to
+% listed excited state. By definition, dark states are the kernel of the obtained slice of the hamiltonian, while bright states are the image. 
+% It stores the superpositions in 'bright states' and 'dark states' variables. 
+%
+% -> function adiabaticElimination(ground_states,excited_states) - takes slice of the transformed hamiltonian: H(ground_states,excited_states), which
+% represents couplings between the ground and excited states. Both arguments should be lists of different indices and they don't have to
+% cover the whole state space. If couplings between ground and excited states allow for creating of an effective hamiltonian without the excited
+% states (for example in case of very large detunings), this eliminates them using a known procedure, which creates additional couplings between
+% ground states. Remaining states (other than defined ground and excited states) are then concatenated to the result, which is then stored in 'obj.adiabaticHamiltonian'.
+% Its size is smaller by the number of excited states.
+%
+%
+% Private methods are described in the code.
+%
 % **************************************************************************************************************************************************************
 % 
 % EXAMPLE - 3-level Lambda system
@@ -175,6 +204,7 @@ classdef Hamiltonian < handle
        zeroEnergy
        brightStates
        darkStates
+       adiabaticHamiltonian
    end
    properties(Access=private)
        freqs
@@ -184,12 +214,13 @@ classdef Hamiltonian < handle
    methods
        
        function obj=Hamiltonian(n)
+           
            if isnumeric(n)
                n=round(n);
-               H=sym('H',n);
-               H(:,:)=sym(0);
-               C=sym('C',[n n 2]);
-               C(:,:,:,:)=sym(0);
+               H=sym('H',n);  %Creating a symbolic matrix
+               H(:,:)=sym(0); %Substitution of symbolic 0's
+               C=sym('C',[n n 2]); %Symboling Coupling matrix
+               C(:,:,:)=sym(0); %Substitution of symbolic 0's
                obj.hamiltonian=H;
                obj.energies=diag(H);
                obj.couplings=C;
@@ -209,7 +240,7 @@ classdef Hamiltonian < handle
               error('You have to provide energies first')
           end
           
-          envars=symvar(ens);
+          envars=symvar(ens); %Obtaining all symbolic variables from the obj.energies vector
           
           if ~ismember(envars,w)
               error('Specified energy is not related to any of the energy levels')
@@ -217,7 +248,7 @@ classdef Hamiltonian < handle
           
           obj.zeroEnergy=w; 
           
-          obj.transformed=subs(obj.transformed,w,0);
+          obj.transformed=subs(obj.transformed,w,0); %The substitution acts only on the hamiltonian after the unitary transformation
            
        end
        
@@ -226,7 +257,7 @@ classdef Hamiltonian < handle
            if length(v)==length(obj.hamiltonian)
                H=obj.hamiltonian;
                for i=1:length(v)
-                   if isnumeric(v(i))
+                   if isnumeric(v(i))  %The hamiltonian is symbolic, so if any numerical values are provided, we change them to symbolic
                        H(i,i)=sym(v(i));
                    else
                        H(i,i)=v(i);
@@ -260,15 +291,15 @@ classdef Hamiltonian < handle
                    w=sym(w);
                end
                
-               if ~ismember(w,fr)
+               if ~ismember(w,fr)  %If the provided frequency is new, it's added to the list
                    fr=[fr,w];
                end
-               C(S_i,S_f,1)=w;
-               C(S_i,S_f,2)=W_r;
+               C(S_i,S_f,1)=w;  %Frequency
+               C(S_i,S_f,2)=W_r; %Rabi rate
 
 
                syms t real; 
-               H(S_i,S_f)=-W_r/2*exp(1i*w*t);
+               H(S_i,S_f)=-W_r/2*exp(1i*w*t); %The off-diagonal element has only the co-rotating term (Rotating Wave Approximation). The minus sign comes from Hij = -dE.
                H(S_f,S_i)=-conj(W_r)/2*exp(-1i*w*t);
                cp(S_i)=cp(S_i)+1;
                obj.cpl=cp;
@@ -306,23 +337,20 @@ classdef Hamiltonian < handle
                    fr=[fr,w];
                end
                
-               
-%                if C(S_i,S_f,1,1)==0
-                   C(S_i,S_f,1)=w;
-                   C(S_i,S_f,2)=W_r;
-%                else
-%                    C(S_i,S_f,1,:)=[C(S_i,S_f,1,:end-1),w];
-%                    C(S_i,S_f,2,:)=[C(S_i,S_f,2,:end-1),W_r];
-%                end
+               % The last coupling used will be stored 
+               C(S_i,S_f,1)=w;
+               C(S_i,S_f,2)=W_r;
 
 
                syms t real; 
+               %Instead of substituting the off-diagonal term, we add the
+               %coupling. This works also for normal (single) couplings,
+               %but substitutions used there ensure that by mistake we don't create
+               %multiple couplings.
+               
                H(S_i,S_f)=H(S_i,S_f)-W_r/2*exp(1i*w*t);
-               if imag(W_r)~=0
-                   H(S_f,S_i)=H(S_f,S_i)-conj(W_r)/2*exp(-1i*w*t);
-               else
-                   H(S_f,S_i)=H(S_f,S_i)-W_r/2*exp(-1i*w*t);
-               end
+               H(S_f,S_i)=H(S_f,S_i)-conj(W_r)/2*exp(-1i*w*t);
+               
                cp(S_i)=cp(S_i)+1;
                obj.cpl=cp;
                obj.freqs=fr;
@@ -345,7 +373,6 @@ classdef Hamiltonian < handle
                n=length(C);
                
                %Edges
-               
                nodes_i=[];
                nodes_f=[];
                weights=[];
@@ -387,8 +414,8 @@ classdef Hamiltonian < handle
                
                EdgeTable=table([nodes_i' nodes_f'],weights',labels','VariableNames',{'EndNodes', 'Weight', 'Label'});
                
-               %Nodes
                
+               %Nodes
                names={};
                En=obj.energies;
 
@@ -398,8 +425,7 @@ classdef Hamiltonian < handle
 
                NodeTable=table(names','VariableNames',{'Label'});
                
-               %Graph
-               
+               %Graph             
                G=digraph(EdgeTable,NodeTable);
 
                obj.stateGraph=G; 
@@ -407,8 +433,7 @@ classdef Hamiltonian < handle
        end
 
        
-       function obj=plotGraph(obj)
-           
+       function obj=plotGraph(obj)           
            G=obj.stateGraph;
            figure
            plot(G,'NodeLabel',G.Nodes.Label,'EdgeLabel',G.Edges.Label,'Layout','force3')
@@ -430,6 +455,8 @@ classdef Hamiltonian < handle
            for ii=1:n
                for j=1:n
                    if C(ii,j,1)==center
+                       %Sidebands are added to both the basic user-defined
+                       %hamiltonian, and to the transformed one.
                        A=H(ii,j);
                        B=H(j,ii);
                        Af=Hf(ii,j);
@@ -468,6 +495,9 @@ classdef Hamiltonian < handle
            for ii=1:n
                for j=1:n
                    if C(ii,j,1)==center
+                       %Like with sidebands, phase modulation is added to
+                       %both the user-defined hamiltonian and to the
+                       %transformed one.
                        A=H(ii,j);
                        B=H(j,ii);
                        Af=Hf(ii,j);
@@ -511,10 +541,13 @@ classdef Hamiltonian < handle
                error('There is no coupling between given states.')
            end
            
+           % This substitution works only on the transformed hamiltonian.
+           % It also uses energies of coupled states for the substitution,
+           % e.g. if states are H(S_f,S_f)=w_f+Delta, H(S_i,S_i)=w_i-g*B,
+           % frequency "w" will be substituted with "w_f+Delta-w_i+g*B-d"
+           Hf=subs(Hf,w,H(S_f,S_f)-H(S_i,S_i)-d); 
            
-           Hf=subs(Hf,w,H(S_f,S_f)-H(S_i,S_i)-d);
-           
-           if ~isempty(w0)
+           if ~isempty(w0) %The zero energy level substitution is performed again, if defined.
             Hf=subs(Hf,w0,0);
            end
            
@@ -546,7 +579,9 @@ classdef Hamiltonian < handle
                end
            end
 
-           
+           %Here, we simply substitute the frequency with user-defined
+           %variables. E_f and E_i don't have to correspond to energy
+           %levels of S_f and S_i.
 
            Hf=subs(Hf,w,E_f-E_i-d);
            
@@ -603,6 +638,7 @@ classdef Hamiltonian < handle
                end
                s=size(vec);
                
+               %Check inputs are vectors
                if (s(1)==1 && s(2)==1 && ne>1) || length(s)>2 || (s(1)>1 && s(2)>1)
                    error('You have to provide vectors.')
                end
@@ -610,28 +646,34 @@ classdef Hamiltonian < handle
                    vec=vec.';
                end
                
-               U=[U,vec];
+               U=[U,vec]; %concatenation
                
            end
           
-           obj.transformed=simplify(U'*H*U,'Steps',100);
+           obj.transformed=simplify(U'*H*U,'Steps',100); %Transformation
                        
        end
        
        
        function obj=findDarkStates(obj,ground_states,excited_states)
+           %The specified indices have to be differnet for ground and
+           %excited states
            if ~isempty(intersect(ground_states,excited_states))
                disp('Indeces for ground and excited states have to be different')
                return
            end
-           M=obj.transformed(ground_states,excited_states)';
+           
+           M=obj.transformed(ground_states,excited_states)'; %Slicing the transformed hamiltonian
            N=[];
+           
            for i=1:length(excited_states)
-               N=[N;M(i,:)/norm(squeeze(M(i,:)))];
+               N=[N;M(i,:)/norm(squeeze(M(i,:)))]; %Normalization. Vectors in matrix M already represent bright states. We now want them normalized.
            end
            N=simplify(N,'Steps',100);
-           obj.brightStates=N;
-           obj.darkStates=null(N);
+           
+           obj.brightStates=N; %Bright states are represented basically by Im(N)
+           obj.darkStates=null(N); %Dark states are defined by ker(N) and their number is dim(ker(N))=dim(N)-rank(N)
+           
            disp("There are "+num2str(length(ground_states)-rank(vpa(N)))+" dark states")
        end
        
@@ -641,39 +683,59 @@ classdef Hamiltonian < handle
                disp('Indeces for ground and excited states have to be different')
                return
            end
+           
            n=length(obj.transformed);
+           
            remainder=1:n;
-           remainder=setdiff(remainder,[ground_states,excited_states]);
-           P=zeros(n);
+           remainder=setdiff(remainder,[ground_states,excited_states]); %Remaining state indices that do not affect the adiabatic elimination.
+           
+           
+           P=zeros(n); %Auxiliary matrices necessary for transformation.
            Q=zeros(n);
+           
            for i=ground_states
             P(i,i)=1;
            end
+           
            for i=excited_states
             Q(i,i)=1;
            end
+           
+           
            D=diag(diag(obj.transformed));
+           
            V=sym(zeros(n));
            V(ground_states,excited_states)=obj.transformed(ground_states,excited_states);
            V(excited_states,ground_states)=obj.transformed(excited_states,ground_states);
-           invR=-(Q*D*Q+Q*V*Q);
-%            disp(V)
-%            disp(invR)
-           R=V+V*(Q/invR)*V;
            
+           %The adiabatic transformation
+           invR=-(Q*D*Q+Q*V*Q);
+           R=V+V*(Q/invR)*V;
            Heff=P*D*P+P*R*P;
            
+           %Matrix 'Heff' has 0's at the indices of other states. We
+           %replace them with values that were there before the
+           %transformation.
            if ~isempty(remainder)
               Heff(:,remainder)=obj.transformed(:,remainder);
               Heff(remainder,:)=obj.transformed(remainder,:);
-               
            end
+           
+           %Removing empty rows and columns (excited states)
+           Heff(excited_states,:)=[];
+           Heff(:,excited_states)=[];
+           
+           
+           obj.adiabaticHamiltonian=Heff;
        end
    end
    
    
    methods(Access=private)
        
+       %This function is called, when unitaryTransformation is used with
+       %'equations' method. This method often does not work due to
+       %limitations of the equation solver.
        function obj=eqnTransform(obj)
            
            w0=obj.zeroEnergy;
@@ -699,10 +761,6 @@ classdef Hamiltonian < handle
                return
            end
            
-           disp(Eqns)
-           disp(sol.a1)
-           disp(sol.a2)
-           disp(sol.a3)
            
            T=sym('T',n);
            T(:,:)=sym(0);
@@ -734,6 +792,7 @@ classdef Hamiltonian < handle
                end
            end
            
+           % Substitutions for pre-defined detunings are perfomed 
            if ~isempty(obj.detunings)
                D=obj.detunings;
                for i=1:length(D(:,1))
@@ -743,6 +802,7 @@ classdef Hamiltonian < handle
                end
            end
            
+           % Substitution for pre-defined (if exists) zero energy level is performed.
            if ~isempty(w0)
             H_f=subs(H_f,w0,0);
            end
@@ -751,7 +811,11 @@ classdef Hamiltonian < handle
            obj.transformed=H_f;
        end
     
-       
+       % This function is called, when unitaryTransformation is used with
+       % 'general' method, which is also the default. It finds a coupling
+       % graph, from which shortest paths are used for the unitary
+       % transformation matrix. This is specific solution to the equations 
+       % one obtaines in the other method. 
        function obj=generalTransform(obj)
 
            H=obj.hamiltonian;
@@ -759,25 +823,31 @@ classdef Hamiltonian < handle
                H=obj.transformed;
            end
            w0=obj.zeroEnergy;
+           
+        %Because the function finds shortest paths to level with zero
+        %energy, it needs to be defined beforehand.
            if isempty(w0)
               disp('To use this method, you should specify the zero energy level. Use "defineZero" function. Now, the function will use H(1,1) as its baseline instead.')
               w0=H(1,1);
            end
            
-           C=obj.couplings;
-           cp=obj.cpl;
            n=length(H);
            t=sym('t','real');
            
-           obj.couplingGraph();
+           obj.couplingGraph(); %Graph is created (function shown below)
 
            T=sym('T',n);
            T(:,:)=sym(0);
            for i=1:n
                T(i,i)=1;
            end
+           
+           % For every state we find a shortest path in the coupling graph
+           % to the user-defined zero energy level. If the state doesn't
+           % have any coupling or if it is a part of a disjoint graph, the
+           % shortest path returned is simply 0. 
            for i=1:n
-               phase=obj.shortestCouplingPath(i,w0);
+               phase=obj.shortestCouplingPath(i,w0); 
                T(i,i)=T(i,i)*exp(1i*phase*t);                      
            end
            
@@ -811,8 +881,7 @@ classdef Hamiltonian < handle
                C=obj.couplings;
                n=length(C);
                
-               %Edges
-               
+               %Edges             
                nodes_i=[];
                nodes_f=[];
                weights=[];
@@ -836,47 +905,46 @@ classdef Hamiltonian < handle
                
                EdgeTable=table([nodes_i' nodes_f'],'VariableNames',{'EndNodes'});
     
-               %Graph
-               
+               %Graph              
                G=graph(EdgeTable);
-
-
                
                obj.cplGr=G; 
             
        end
            
-    
+       % Function that finds shortest coupling path between state of index
+       % 'ind_i' and the zero energy state with energy 'w0'. It uses
+       % built-in Dijkstra algorithm.
        function phase=shortestCouplingPath(obj,ind_i,w0)
            Gr=obj.cplGr;
            Ens=obj.energies;
            ind_w=0;   
            
+           %First, indeces of zero energy levels is found (can be any of
+           %multiple levels with the same energy modulo offsets, i.e.
+           %w0+Delta is a viable zero energy level)
            for i=1:length(Ens)
                s_en=symvar(Ens(i));
-
                if ismember(w0,s_en) || w0==Ens(i)
                    if ind_w>0
                     ind_w=[ind_w,i];
                    else
                        ind_w=i;
-                   end
-                  
+                   end                 
                end
-
            end
+           
            if ~ind_w
                  phase=0;
                  return
            end
            
 
-           
+           % We find path to any of the zero energy levels. Once it is
+           % found, we exit the loop. The found path is a list of indices,
+           % not the distance.
            for ind=ind_w
-%                if ismember(ind_i,ind_w)
-%                    p=0;
-%                    break
-%                end
+               
                p=shortestpath(Gr,ind_i,ind);
 
                if ~isempty(p)
@@ -884,11 +952,15 @@ classdef Hamiltonian < handle
                end
            end
 
+           
            C=obj.couplings;
            phase=0;
            
            n=length(p);
-           
+           % The graph used here has edges with equal weights. The path,
+           % however, has to be found using weights equal to couplings with
+           % their sign depending on the relative direction of the coupling
+           % and the path.
            for j=1:n-1
                if C(p(j),p(j+1),1)~=0
                    phase=phase+C(p(j),p(j+1),1);
@@ -903,7 +975,7 @@ classdef Hamiltonian < handle
         
 end
 
-
+%Auxiliary functions
 function[vec]=to_vector(A)
     k=size(A,1);
     vec=sym('v',[k^2 1]);

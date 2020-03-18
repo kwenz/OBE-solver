@@ -113,6 +113,8 @@ classdef Dissipator < handle
                 
                P=sym('P',n);
                
+               % The symbolic matrix is created in such a way, that the
+               % i+1,j+1-th element is piqj
                for i=1:n
                   for j=1:n
                       if verLessThan('matlab', '9.3')
@@ -162,13 +164,15 @@ classdef Dissipator < handle
                 G=sym('G',n);
                 G(:,:)=sym(0);
                 G(sf,si)=sqrt(g);
-             
+                
+                % Adding effects of a single spontaneous decay to the
+                % dissipator
                 D_new=D-1/2*anticommute(G'*G,P)+G*P*G';
 
                 obj.dissipator=simplify(D_new,'Steps',20);
                 
-                %Update decay rates
                 
+                %Update decay rates       
                 bold=R(si);
                 bnew=R(si)+g;
                 R(si)=bnew;
@@ -176,7 +180,6 @@ classdef Dissipator < handle
 
 
                 %Update branching ratios
-
                 for i=1:n
                     if i==sf
                         B(si,i)=(B(si,i)*bold+g)/bnew;
@@ -191,13 +194,14 @@ classdef Dissipator < handle
                       
         end
         
+        
         function obj=fromBranching(obj,BR,DR)
                D=obj.dissipator;
                P=obj.densityMatrix;
                
                n=length(D);
                
-               eps=10^(-3);
+               eps=10^(-3); %Sum of branching ratios must be equal to 1. This determines the tolerance level.
                
                if length(BR)~=n || length(DR)~=n
                    error('Branching ratios and decay rates have to be specified for all the states')
@@ -205,11 +209,13 @@ classdef Dissipator < handle
                     if isnumeric(BR)
                       for i=1:n
                         for j=1:n
+                            %Check of single branching ratios
                           if BR(i,j)>1 || BR(i,j)<0
                             error('Branching ratios have to be between 0 and 1')
                           end
                         end
                         
+                        %Check of sum of branching ratios
                         if (sum(BR(i,:))>1+eps || sum(BR(i,:))<1-eps) && (sum(BR(i,:))>eps || sum(BR(i,:))<-eps)
                           
                           error('Sum of branching ratios for a decay from any state has to be equal to 1 or 0')
@@ -218,6 +224,7 @@ classdef Dissipator < handle
                     end
                    obj.branching=BR;
                    obj.decayR=DR;
+                   
                    %Diagonal elements
                    G=sym('G',n);
                    G(:,:)=sym(0);
@@ -233,6 +240,7 @@ classdef Dissipator < handle
                        end
                    end   
                    
+                   
                    %Off-diagonal
                    D=D-1/2*anticommute(G*G,P);
                    for i=1:n
@@ -245,42 +253,6 @@ classdef Dissipator < handle
                end
 
         end 
-        
-        function obj=changeBasis(obj,varargin)
-           D=obj.dissipator;
-           ne=length(D);
-           n=nargin-1;
-
-           if n~=ne
-               error('Number of vectors provided has to be equal to the number of states')
-           end
-           
-           U=[];
-           
-           for i=1:n
-               vec=varargin{i};
-
-               if length(vec)~=ne
-                
-                   error('All vectors have to have the same length as number of states')
-                   
-               end
-               s=size(vec);
-               
-               if (s(1)==1 && s(2)==1 && ne>1) || length(s)>2 || (s(1)>1 && s(2)>1)
-                   error('You have to provide vectors.')
-               end
-               if s(1)==1
-                   vec=vec.';
-               end
-               
-               U=[U,vec];
-               
-           end
-          
-           obj.dissipator=simplify(U'*D*U,'Steps',100);
-                       
-       end
  
     end
 end

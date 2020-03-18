@@ -17,6 +17,9 @@
 % evolution -> NxNxL matrix, where (i,j) element is a vector of length L storing values of Pij at times saved to obj.evTime; i.e. it's the time
 % evolution of all elements of the density matrix.
 %
+% evolutionTr -> NxNxL matrix, where (i,j) element is a vector of length L storing values of Pij in changed basis at times saved to obj.evTime; i.e. it's the time
+% evolution of all elements of the density matrix.
+%
 % eqnsRHS -> N^2 long vector storing the right hand side of Bloch Equations in the vector form, i.e. i[H,P]+D. The order is:
 % [(1,1),(1,2),...,(1,N),(2,1)...,(N,N-1),(N,N)]
 %        
@@ -61,7 +64,11 @@
 % -> function plotEvolution() - plots diagonal elements of obj.evolution (populations of states) as function of time
 %
 % -> function extendEvolution(t_final,Vars) - evolves Bloch equations using the previously obtained solution as the initial condition. Solution is
-% concatenated to the already existing one
+% concatenated to the already existing one.
+%
+% -> function changeBasis(vecs) - performs transformation of the density matrix at every found time step (obj.evolution) to a different basis. As argument it takes 'n' 
+% (number of states) vectors of length 'n' defining the new basis, combines them in transformation matrix U and performs operation of U'PU. Results
+% are stored in 'obj.evolutionTr'.
 %
 % -> function optimizeParameters(t_ini,t_fin,IC,M,score_pop,varargin) - optimizes parameters using genetic optimization. Can be optimized to obtain high/low populations in
 % various states. t_ini and t_fin are the integration time, IC - initial conditions, M - cell matrix with parameters and their domains, e.g.
@@ -136,11 +143,11 @@ classdef BlochEqns < handle
                     end
                     L=D.dissipator;
                     
-                    Final_matrix=simplify(-1i*commute(Ham,P)+L,'Steps',50);
+                    Final_matrix=simplify(-1i*commute(Ham,P)+L,'Steps',50); %Master equation
                     Eqns=diff(P,t)==Final_matrix;
                     Eqns0= zeros(n)==Final_matrix;
                     Eqns0=to_vector(Eqns0);
-                    Eqns0=[Eqns0;1==trace(P)];
+                    Eqns0=[Eqns0;1==trace(P)]; %Steady state equations need trace(P)==1 added to be fully solved
                     
                     obj.equations=Eqns;
                     obj.equationsVector=to_vector(Eqns);
@@ -159,16 +166,17 @@ classdef BlochEqns < handle
         function obj=solveSteady(obj)
             
             n=length(obj.densityMatrix);
-            Eqs=obj.equationsS;
+            Eqs=obj.equationsS ;%Solver requires equations to be in a vector
             
-            Variables=to_vector(obj.densityMatrix);
+            Variables=to_vector(obj.densityMatrix); 
             
             Y=sym('Y', [n^2 1]);
 
-            Eqs=subs(Eqs,Variables,Y);
+            Eqs=subs(Eqs,Variables,Y); %They also have to be solved by substituting density matrix terms with dummy variables
             
             sol=solve(Eqs,Y);
-
+            
+            %We put solutions back into a matrix form
             SM=sym('SM',n);
             for i=1:n
                 for j=1:n
@@ -200,12 +208,14 @@ classdef BlochEqns < handle
                     if length(IC)~=n
                         error('Please provide initial conditions for all states.')
                     else
+                        %All the equations and initial conditions have to
+                        %be vectorized
                         obj.initialConditions=IC;
                         IC=to_vector(IC);
                       
                         Variables=to_vector(obj.densityMatrix);  
-
-                        Y=sym('Y', [n^2 1]);
+                        
+                        Y=sym('Y', [n^2 1]); %Dummy variables
                         t=sym('t','real');
 
                         Eqs=obj.eqnsRHS;                    
@@ -214,19 +224,21 @@ classdef BlochEqns < handle
                         
                         F=subs(Eqs,[Variables,Add_vars],[Y,Vars]);
                         
+                        FF=matlabFunction(F,'vars',{t,Y}); %Matlab requires us to create a matlabFunction object from our equations, in order to solve ODEs
                         
-
-                        FF=matlabFunction(F,'vars',{t,Y});
-
+                        %AbsTol and RelTol are tolerances that determine
+                        %how precise our solution is. MaxStep given here
+                        %limits the solver to take minimum of 1000 steps.
                         option=odeset('AbsTol',1e-6,'RelTol',1e-5,'MaxStep',(t_final-t_initial)/1000);
       
                         solution=ode45(FF,[t_initial t_final],double(IC),option);
                                                
                         obj.lastSol=solution;
                      
-                        obj.evTime=solution.x(1,:);
-
-                        EV=zeros(n,n,length(solution.x(1,:)));
+                        obj.evTime=solution.x(1,:); %Times at which solution was found
+                        
+                        %Solutions are put into a matrix
+                        EV=zeros(n,n,length(solution.x(1,:))); 
                         for i=1:n
                             for j=1:n
                                 EV(i,j,:)=solution.y((i-1)*n+j,:);
@@ -277,7 +289,7 @@ classdef BlochEqns < handle
            EqsTr=zeros(size(Eqs));
            
            for i=1:size(Eqs,3)
-               EqsTr(:,:,i)=U'*squeeze(Eqs(:,:,i))*U;
+               EqsTr(:,:,i)=U'*squeeze(Eqs(:,:,i))*U; %Basis is changed at every time step
            end
            
            obj.evolutionTr=EqsTr;
@@ -333,7 +345,7 @@ classdef BlochEqns < handle
             for i=1:length(obj.densityMatrix)
                 plot(obj.evTime(1,:),squeeze(obj.evolution(i,i,:)))
                 hold on
-                legendInfo{i}=['State ' num2str(i)];
+                legendInfo{i}=['State ' num2str(i)];  %Generic names are provided
             end
             xlabel('Time')
             ylabel('Population')
@@ -342,7 +354,13 @@ classdef BlochEqns < handle
             drawnow
         end
 
-        
+        %Genetic optimization function. The parameters to be optimized have
+        %to be provided as a cell matrix
+        %'M'={'Var1',lower_bound,upper_bound;'Var2',...}. 'score_pop'
+        %should be a list of indices. The variables to be optimized given
+        %in 'M' have to be the same as ones provided by
+        %'necessaryVariables' method, and have to be provided in the same
+        %order.
         function obj=optimizeParameters(obj,t_ini,t_fin,IC,M,score_pop,varargin)
 
             rng shuffle;
@@ -356,8 +374,9 @@ classdef BlochEqns < handle
             end
 
             N=sz(1);
-            Domain=zeros(N,2);
-
+            Domain=zeros(N,2); %Bounds for optimized parameters. 
+            
+            %Checking if parameters for optimization are viable
             nec_vars=obj.necessaryVariables();
             for i=1:N
                 if isnumeric(M{i,1})
@@ -380,13 +399,15 @@ classdef BlochEqns < handle
                 Domain(i,1)=M{i,2};
                 Domain(i,2)=M{i,3};
             end
-
+            
+            %Indices of states to be optimized
             if length(score_pop)<1
                 error('You have to provide at least one population state with respect to which optimize');
             elseif length(score_pop)>=length(obj.densityMatrix)
                 error('You can optimize with respect to at most n-1 populations');
             end
-
+            
+            %Validity of indices
             for k=score_pop
                 if ~isnumeric(k)
                     error('Indecies have to be numeric');
@@ -397,7 +418,7 @@ classdef BlochEqns < handle
                 end
             end
 
-
+            %Validating functions for the options
             ScalarValidity=@(x) isnumeric(x) && isscalar(x) && (x>0);
             
             ScalarValidityF=@(x) isnumeric(x) && isscalar(x) && (x>0) && (x<1);
@@ -414,18 +435,18 @@ classdef BlochEqns < handle
 
             p=inputParser;
 
-            %Controls
-            default_crit='maximum';
-            default_popsize=20;
-            default_elitefrac=0.3;
-            default_iterations=10;
-            default_populations=3;
-            default_int='no';
-            default_sw='no';
-            default_nosw=0;
+            %Default controls
+            default_crit='maximum'; %Criterion for optimization
+            default_popsize=20;  %Single population size (number of parameter vectors)
+            default_elitefrac=0.3; %Fraction of population that is allowed to have offspring
+            default_iterations=10; %Optimization iterations 
+            default_populations=3; %Number of times new random populations are initialized nad optimization repeated
+            default_int='no'; %Whether or not we optimize absolute value at t_final or integral from t_initial to t_final
+            default_sw='no'; %Whether or not we should switch some parameters on and off when solving for time evolution
+            default_nosw=0; %Number of times switching happens
             default_swpar=ones(1,N);
             
-
+            %Associating validation functions with specific options
             addParameter(p,'Criterion',default_crit,StringValidityC);
             addParameter(p,'Popsize',default_popsize,IntegerValidity);
             addParameter(p,'Fraction',default_elitefrac,ScalarValidityF);
@@ -436,7 +457,7 @@ classdef BlochEqns < handle
             addParameter(p,'NoSwitches',default_nosw,IntegerValidity);
             addParameter(p,'SwitchingParameters',default_swpar,MatrixValidity);
     
-            parse(p,varargin{:});
+            parse(p,varargin{:}); %option parser
 
             criterion=p.Results.Criterion;
             popsize=p.Results.Popsize;
@@ -460,9 +481,10 @@ classdef BlochEqns < handle
                 end
             end
             
-
-            elite=int8(elite_frac*popsize);
-            final_elite=max(int8(popsize/2/distinct_pops),3);
+            
+            elite=int8(elite_frac*popsize); %Absolute number of examples allowed to have offspring and move to the next iteration
+            final_elite=max(int8(popsize/2/distinct_pops),3); %After multiple rounds (specified in options) of optimizations are performed, 
+            %top 'final_elite' number of examples from the last iteration is copied to the final population and allowed to have new offspring
 
 
             % Probabilities of mutation and crossbreeding
@@ -548,7 +570,7 @@ classdef BlochEqns < handle
                                  
                
                                 if sw==1
-                                    obj.evolve(t_ini,t_step,IC,var_sw);
+                                    obj.evolve(t_ini,t_step,IC,var_sw); %We solve equations for every vector of parameters in the population
                                 else
                                     obj.intTime=[(sw-2)*t_step,(sw-1)*t_step];
                                     obj.lastSol=prevSol;
@@ -558,7 +580,11 @@ classdef BlochEqns < handle
                                 prevSol=obj.lastSol;
                              end
                          end
-
+                         
+                         %Parameter vectores are ordered by the score the
+                         %got, which here is simply min/max of the sum of
+                         %population at provided indices at t_final (or sum
+                         %of integrals if chosen so in the options)
                          scores(j,N+1)=0;
                          if strcmp(integration,'yes')
                              Ys=zeros(1,length(obj.evTime(:)));
@@ -592,12 +618,12 @@ classdef BlochEqns < handle
                    if strcmp(criterion,'maximum')
                        if scores(1,N+1)>best(1,N+1)
                            best(1,:)=scores(1,:);
-                           disp(best);
+                           disp(best); %best parameters and the score are shown
                        end
                    elseif strcmp(criterion,'minimum')
                        if scores(1,N+1)<best(1,N+1)
                            best(1,:)=scores(1,:);
-                           disp(best);
+                           disp(best); %best parameters and the score are shown
                        end
                    end
                    
@@ -607,11 +633,14 @@ classdef BlochEqns < handle
                    pop=ranked(1:elite,:);
 
 
-
+                   %Loop that uses 'elite' number of top parameter vectors
+                   %to replenish the population using either: mutation or
+                   %crossbreeding. Mutation can happen at a single, few or
+                   %all sites. 
                    while size(pop(:,1))<popsize
                       pr=rand;
-
-                      if pr<probs(N)
+    
+                      if pr<probs(N) %Mutation
                           if N==1 || pr<probs(1)
                               c1=randi(N);
                               C=[c1];
@@ -665,7 +694,7 @@ classdef BlochEqns < handle
 
                           clear vec;
 
-                      elseif k<probs(N+1)
+                      elseif k<probs(N+1) %Complete randomization. Initializes a new parameter vector.
                           vec=zeros(1,N);
                           for ind=1:N
                             vec(ind)=rand*(Domain(ind,2)-Domain(ind,1))+Domain(ind,1);
@@ -673,7 +702,7 @@ classdef BlochEqns < handle
 
                           pop=[pop;vec];
                           clear vec;    
-                      else
+                      else %Crossbreeding
                           c1=randi(elite);
                           c2=randi(elite);
                           vec1=pop(c1,:);
@@ -692,11 +721,15 @@ classdef BlochEqns < handle
 
                 end
 
-                final_population((l-1)*final_elite+1:l*final_elite,:)=ranked(1:final_elite,:);
+                final_population((l-1)*final_elite+1:l*final_elite,:)=ranked(1:final_elite,:); %After all iterations, top parameter vectors are added
 
                 clear pop ranked;
             end
             
+            
+            
+            %Using 'final_population', the population for last optimization
+            %run is replenished.
             if distinct_pops>1
                 pop=final_population;
                 clear final_population;
@@ -787,6 +820,11 @@ classdef BlochEqns < handle
 
                 end
 
+                
+                
+                
+                %Final optimization using winners of previous optimization
+                %rounds.
                  disp('Optimization - final population')
 
                  for i=1:iterations
@@ -967,6 +1005,9 @@ classdef BlochEqns < handle
     end
 end
      
+
+
+
 function[vec]=to_vector(A)
     k=size(A,1);
     vec=sym('v',[k^2 1]);
@@ -1000,13 +1041,6 @@ function[bool]=validate_matrix(X,n)
     end
 
 end
-
-
-% function [Fs]=add_noise(F,x,t,tf)
-%     T=0:tf/1000:tf;
-%     phi=interp1(T,vec,t);
-%     F=subs(F,x,phi);
-% end
 
 
 

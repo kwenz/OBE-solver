@@ -55,17 +55,17 @@ function[x]=dipoleTransitionMatrixElement(E,G,p,varargin)
                  
                 Mixing_M=zeros(4,8); %|J,F1,F>: |1,1/2,0>,|1,1/2,1>,|1,3/2,1>,|1,3/2,2>,|2,3/2,1>,|2,3/2,2>,|2,5/2,2>,|3,5/2,2>
                 Mixing_M(1,:)=[1,0,0,0,0,0,0,0]; %E. Norrgard et al.
-                Mixing_M(2,:)=[0,0.9996,0.0203,0,0.018,0,0,0];
-                Mixing_M(3,:)=[0,0.0267,-0.8519,0,-0.5231,0,0,0];
-                Mixing_M(4,:)=[0,0,0,0.8483,0,0.5293,0.0138,0.0064];
+                Mixing_M(2,:)=[0,0.9996,0.0203,0,-0.018,0,0,0];
+                Mixing_M(3,:)=[0,0.0267,-0.8518,0,0.5232,0,0,0];
+                Mixing_M(4,:)=[0,0,0,0.8482,0,-0.5294,-0.0138,0.0064];
                 
              elseif (E(1)>0 && E(2)==2) || (G(1)>0 && G(2)==2)
                  
                 Mixing_M=zeros(4,11); %|J,F1,F>: |1,1/2,1>,|1,3/2,1>,|1,3/2,2>,|2,3/2,1>,|2,3/2,2>,|2,5/2,2>,|2,5/2,3>,|3,5/2,2>,|3,5/2,3>,|3,7/2,3>,|4,7/2,3>
-                Mixing_M(1,:)=[-0.0048,-0.5235,0,0.8521,0,0,0,0,0,0,0];
-                Mixing_M(2,:)=[0,0,0.5294,0,-0.8483,-0.0011,0,-0.0103,0,0,0];
-                Mixing_M(3,:)=[0,0,0.0103,0,0.012,-0.9353,0,-0.3534,0,0,0];
-                Mixing_M(4,:)=[0,0,0,0,0,0,0.9342,0,0.3568,0.01,0.0032];
+                Mixing_M(1,:)=[0.0048,0.5235,0,0.852,0,0,0,0,0,0,0];
+                Mixing_M(2,:)=[0,0,0.5295,0,0.8482,0.0011,0,-0.0103,0,0,0];
+                Mixing_M(3,:)=[0,0,-0.0104,0,0.012,-0.9353,0,0.3535,0,0,0];
+                Mixing_M(4,:)=[0,0,0,0,0,0,0.9341,0,-0.3568,-0.01,0.0032];
                 
              end
              e_ind=0;
@@ -245,11 +245,10 @@ function[x]=dipoleTransitionMatrixElement(E,G,p,varargin)
                               end                    
                           end
                       end
-                  end
+                      
              else
                 G_st=[G(2),G(3),G(4),G(5),G(6)];
-              end
-              
+             end
              
              for i=1:length(E_st(:,1))
                 for j=1:length(G_st(:,1))
@@ -296,7 +295,8 @@ function[x]=dipoleTransitionMatrixElement(E,G,p,varargin)
                     end
                     partial_x=((-1)^power)*del*sum*sqrt((2*Fg+1)*(2*Jg+1)*(2*Fe+1)*(2*Je+1)*(2*F1g+1)*(2*F1e+1))*ThreeJSymbol(Fe,-Me,1,p,Fg,Mg)*SixJSymbol(Jg,F1g,1/2,F1e,Je,1)*SixJSymbol(F1g,Fg,1/2,Fe,F1e,1)*1/2;
                     
-                    
+                   disp(E_St(i,:))
+                   disp(Mi
                     if E(1)>0 && G(1)==0
                         x=x+partial_x*Mixing_M(e_ind,E_st(i,6));
                     elseif E(1)==0 && G(1)>0
@@ -311,9 +311,10 @@ function[x]=dipoleTransitionMatrixElement(E,G,p,varargin)
             end
  
          end
+      end
+    
+    
 end
-    
-    
     
     
     
