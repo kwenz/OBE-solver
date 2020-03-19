@@ -222,7 +222,7 @@ classdef BlochEqns < handle
                         v=symvar(Eqs);
                         Add_vars=setdiff(v,t);
                         
-                        F=subs(Eqs,[Variables,Add_vars'],[Y,Vars']);
+                        F=subs(Eqs,[Variables',Add_vars],[Y',Vars]);
                         
                         FF=matlabFunction(F,'vars',{t,Y}); %Matlab requires us to create a matlabFunction object from our equations, in order to solve ODEs
                         
@@ -315,7 +315,7 @@ classdef BlochEqns < handle
                             v=symvar(Eqs);
                             Add_vars=setdiff(v,t);
 
-                            F=subs(Eqs,[Variables,Add_vars'],[Y,Vars']);
+                            F=subs(Eqs,[Variables',Add_vars],[Y',Vars]);
 
                             FF=matlabFunction(F,'vars',{t,Y});
 
