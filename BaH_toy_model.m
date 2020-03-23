@@ -245,7 +245,7 @@ H.defineZero(w_e);
 % %proportional to differneces between laser frequencies, e.g. proportional 
 % %to g_f*B*exp[i*t*(w_L01-w_L1)], which for w_L01-w_L1 and w_L01-w_L2 is 
 % %equal to ~1200 Gamma. The w_L1-w_L2 term is around 40MHz, which is equal
-% %to 5.6 Gamma. 
+% %to 33 Gamma. 
 % %
 % %The very-quickly oscillating term does not influence our results -
 % %oscillations are on top of the much slower behaviour. The ~40MHz
