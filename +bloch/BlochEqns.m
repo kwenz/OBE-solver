@@ -222,8 +222,9 @@ classdef BlochEqns < handle
                         v=symvar(Eqs);
                         Add_vars=setdiff(v,t);
                         
-                        F=subs(Eqs,[transpose(Variables),Add_vars],[transpose(Y),Vars]);
                         
+                        F=subs(Eqs,[transpose(Variables),Add_vars],[transpose(Y),Vars]);
+
                         FF=matlabFunction(F,'vars',{t,Y}); %Matlab requires us to create a matlabFunction object from our equations, in order to solve ODEs
                         
                         %AbsTol and RelTol are tolerances that determine
@@ -253,6 +254,123 @@ classdef BlochEqns < handle
             end    
         end
         
+        
+        function x=getForce(obj,H,time)
+           import bloch.Hamiltonian
+           if isempty(obj.evolution)
+               error('You need to obtain time evolution of the density matrix first')
+           end
+           
+           if ~isa(H,'Hamiltonian')
+                error('You have to provide hamiltonian as object of its own class')
+           end
+           
+           if time<obj.intTime(1) || time >obj.intTime(2)
+               error('Time at which force is evaluated should be withing limits of the integration time used')
+           end
+           
+           syms t real;
+           
+           Hvars=symvar(H.hamGradient);
+           
+           if length(Hvars)>2
+               error('Gradient should have time [t] as its only symbolic variable')
+           elseif ~ismember(t,Hvars)
+               
+               error('Gradient should have time [t] as its only symbolic variable')
+           end
+           
+           mn=obj.intTime(2)-obj.intTime(1);
+           ind=1;
+           for i=1:length(obj.evTime)
+              if abs(obj.evTime(i)-time)<mn
+                  mn=abs(obj.evTime(i)-time);
+                  ind=i;
+              else
+                  break
+              end
+           end
+           
+           gradH=subs(H.hamGradient,t,obj.evTime(ind));
+           
+           x=-double(real(vpa(simplify(trace(squeeze(obj.evolution(:,:,ind))*gradH)))));
+            
+        end
+        
+        function x=averageForce(obj,H,time_ini,time_fin,step)
+           import bloch.Hamiltonian
+           if isempty(obj.evolution)
+               error('You need to obtain time evolution of the density matrix first')
+           end
+           
+           if ~isa(H,'Hamiltonian')
+                error('You have to provide hamiltonian as object of its own class')
+           end
+           
+           if time_ini<obj.intTime(1) || time_ini>obj.intTime(2)
+               error('Time at which force is evaluated should be withing limits of the integration time used')
+           end
+           
+           if time_ini==time_fin
+               error('Provided times have to be different')
+           end
+           
+           if time_fin<obj.intTime(1) || time_fin>obj.intTime(2)
+               error('Time at which force is evaluated should be withing limits of the integration time used')
+           end
+           
+           if time_fin<time_ini
+               temp=time_fin;
+               time_fin=time_ini;
+               time_ini=temp;
+           end
+           
+           
+           syms t real;
+           
+           Hvars=symvar(H.hamGradient);
+           
+           if length(Hvars)>2
+               error('Gradient should have time [t] as its only symbolic variable')
+           elseif ~ismember(t,Hvars)
+               error('Gradient should have time [t] as its only symbolic variable')
+           end
+           
+           mn=obj.intTime(2)-obj.intTime(1);
+           ind_i=1;           
+           for i=1:length(obj.evTime)
+              if abs(obj.evTime(i)-time_ini)<mn
+                  mn=abs(obj.evTime(i)-time_ini);
+                  ind_i=i;
+              else
+                  break
+              end
+           end
+           
+           
+           
+           mn=obj.intTime(2)-obj.intTime(1);
+           ind_f=length(obj.evTime);           
+           for i=length(obj.evTime):-1:1
+              if abs(obj.evTime(i)-time_fin)<mn
+                  mn=abs(obj.evTime(i)-time_fin);
+                  ind_f=i;
+              else
+                  break
+              end
+           end
+           
+           Force=zeros([round((ind_f-ind_i)/step)+1,1]);
+           k=1;
+           for i=ind_i:step:ind_f
+              gradH=subs(H.hamGradient,t,obj.evTime(i));          
+              x=-real(trace(squeeze(obj.evolution(:,:,i))*gradH));
+              Force(k)=x;
+              k=k+1;
+           end
+           x=double(trapz(obj.evTime(ind_i:step:ind_f),Force)/(time_fin-time_ini));           
+           
+        end
         
         function obj=changeBasis(obj,varargin)
            Eqs=obj.evolution;

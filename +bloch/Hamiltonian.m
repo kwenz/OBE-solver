@@ -205,6 +205,7 @@ classdef Hamiltonian < handle
        brightStates
        darkStates
        adiabaticHamiltonian
+       hamGradient
    end
    properties(Access=private)
        freqs
@@ -233,6 +234,22 @@ classdef Hamiltonian < handle
                 
        end
        
+       
+       function obj=takeGradient(obj,x)
+           
+           if ~isempty(obj.transformed)
+               H=obj.transformed;
+           else
+               H=obj.hamiltonian;
+           end
+           
+           if ~ismember(x,symvar(H))
+               obj.hamGradient=diff(H,x);
+               error('Gradient has to be taken with respect to a variable present in the hamiltonian.'); 
+           else
+               obj.hamGradient=diff(H,x);
+           end 
+       end
        
        function obj=defineZero(obj,w)
           ens=obj.energies;
