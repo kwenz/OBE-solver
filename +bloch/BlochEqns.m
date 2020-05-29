@@ -242,7 +242,7 @@ classdef BlochEqns < handle
                         EV=zeros(n,n,length(solution.x(1,:))); 
                         for i=1:n
                             for j=1:n
-                                EV(i,j,:)=solution.y((i-1)*n+j,:);
+                                EV(j,i,:)=solution.y((i-1)*n+j,:);
                             end
                         end
 
@@ -446,7 +446,7 @@ classdef BlochEqns < handle
                             EV=zeros(n,n,length(solution.x(1,:)));
                             for i=1:n
                                 for j=1:n
-                                    EV(i,j,:)=solution.y((i-1)*n+j,:);
+                                    EV(j,i,:)=solution.y((i-1)*n+j,:);
                                 end
                             end
 
